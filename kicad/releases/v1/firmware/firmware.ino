@@ -58,24 +58,25 @@ const pin_t g_decimal3_pin = 3;  // Least significant decimal point (right).
 #define NUMBER_7 (0b01100100)
 #define NUMBER_8 (0b01111111)
 #define NUMBER_9 (0b01101111)
+#define BLANK (0b00000000)
 
-const digit_t g_numbers[10] = {
+const segdigit_t g_numbers[10] = {
     NUMBER_0, NUMBER_1, NUMBER_2, NUMBER_3, NUMBER_4,
     NUMBER_5, NUMBER_6, NUMBER_7, NUMBER_8, NUMBER_9
 };
 
 // Add a dot to a 7-segment digit.
-digit_t dotted(digit_t digit) {
+segdigit_t dotted(segdigit_t digit) {
     return digit | 0b10000000;
 }
 
 // Remove the dot to a 7-segment digit.
-digit_t undotted(digit_t digit) {
+segdigit_t undotted(segdigit_t digit) {
     return digit & 0b01111111;
 }
 
 // Return true if the digit is dotted.
-bool has_dot(digit_t digit) {
+bool has_dot(segdigit_t digit) {
     return digit & 0b10000000;
 }
 
@@ -103,7 +104,7 @@ void turn_off_dot(uint8_t index) {
 
 // Utility function to display (the 3 LSD's of) an arbitrary integer.
 void display_int(int number) {
-    digit_t display_state[3];
+    segdigit_t segdigits[3];
     uint8_t hundreds = 0;
     uint8_t tens = 0;
     uint8_t ones = 0;
@@ -119,20 +120,20 @@ void display_int(int number) {
         }
     }
 
-    display_state[2] = g_numbers[hundreds];
-    display_state[1] = g_numbers[tens];
-    display_state[0] = g_numbers[ones];
-    send_three_digits(display_state);
+    segdigits[2] = g_numbers[hundreds];
+    segdigits[1] = g_numbers[tens];
+    segdigits[0] = g_numbers[ones];
+    send_three_segdigits(segdigits);
 }
 
 // The currently displayed digits.
 // Note: g_display_state[0] == least significant (right).
-digit_t g_display_state[3] = { 9, 9, 9 };
+segdigit_t g_display_state[3] = { 9, 9, 9 };
 
 // Serially shift a digit out to the chain of 7-segment displays.
-void shift_out_digit(digit_t digit) {
+void shift_out_segdigit(segdigit_t digit) {
     digitalWrite(g_latch_pin, LOW);
-    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, digit & 0b01111111);
+    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, undotted(digit));
     digitalWrite(g_latch_pin, HIGH);
     g_display_state[0] = g_display_state[1];
     g_display_state[1] = g_display_state[2];
@@ -147,15 +148,15 @@ void shift_out_digit(digit_t digit) {
 }
 
 // Update all three digits of the display.
-void send_three_digits(digit_t* digits) {
+void send_three_segdigits(segdigit_t* segdigits) {
     digitalWrite(g_latch_pin, LOW);
-    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, digits[0] & 0b01111111);
-    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, digits[1] & 0b01111111);
-    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, digits[2] & 0b01111111);
+    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, undotted(segdigits[0]));
+    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, undotted(segdigits[1]));
+    shiftOut(g_data_pin, g_clock_pin, MSBFIRST, undotted(segdigits[2]));
     digitalWrite(g_latch_pin, HIGH);
-    g_display_state[0] = digits[0];
-    g_display_state[1] = digits[1];
-    g_display_state[2] = digits[2];
+    g_display_state[0] = segdigits[0];
+    g_display_state[1] = segdigits[1];
+    g_display_state[2] = segdigits[2];
    for (uint8_t i = 0; i < 3; i++) {
        if (has_dot(g_display_state[i])) {
            turn_on_dot(i);
@@ -259,57 +260,193 @@ millis_t get_elapsed_timer_millis() {
     }
 }
 
-// Convert milliseconds into an array of three digit_t's.
-void millis_as_display_state(millis_t elapsed, digit_t* digits_out) {
+// Convert milliseconds into an array of three segdigit_t's.
+void millis_as_3_segdigits(millis_t elapsed, segdigit_t* segdigits_out) {
     uint8_t hundreds = 0;
     uint8_t tens = 0;
     uint8_t ones = 0;
     uint8_t tenths = 0;
+    uint8_t hundredths = 0;
 
     millis_t tmp = elapsed;
-    if (elapsed >= 100) {
-        tmp = tmp / 100;
-        tenths = tmp % 10;
-
-        if (elapsed >= 1000) {
+    if (elapsed >= 10) {
+        tmp = tmp / 10;
+        hundredths = tmp % 10;
+        if (elapsed >= 100) {
             tmp = tmp / 10;
-            ones = tmp % 10;
-
-            if (elapsed >= 10000) {
+            tenths = tmp % 10;
+            if (elapsed >= 1000) {
                 tmp = tmp / 10;
-                tens = tmp % 10;
-
-                if (elapsed >= 100000) {
+                ones = tmp % 10;
+                if (elapsed >= 10000) {
                     tmp = tmp / 10;
-                    hundreds = tmp % 10;
+                    tens = tmp % 10;
+                    if (elapsed >= 100000) {
+                        tmp = tmp / 10;
+                        hundreds = tmp % 10;
+                    }
                 }
             }
         }
     }
 
     if (hundreds > 0) {
-        digits_out[2] = g_numbers[hundreds];
-        digits_out[1] = g_numbers[tens];
-        digits_out[0] = dotted(g_numbers[ones]);
+        segdigits_out[2] = g_numbers[hundreds];
+        segdigits_out[1] = g_numbers[tens];
+        segdigits_out[0] = dotted(g_numbers[ones]);
+    } else if (tens > 0) {
+        segdigits_out[2] = g_numbers[tens];
+        segdigits_out[1] = dotted(g_numbers[ones]);
+        segdigits_out[0] = g_numbers[tenths];
     } else {
-        digits_out[2] = g_numbers[tens];
-        digits_out[1] = dotted(g_numbers[ones]);
-        digits_out[0] = g_numbers[tenths];
+        segdigits_out[2] = dotted(g_numbers[ones]);
+        segdigits_out[1] = g_numbers[tenths];
+        segdigits_out[0] = g_numbers[hundredths];
     }
 }
 
-// Compare two arrays of digit_t's.
-bool display_states_are_equal(digit_t* a, digit_t* b) {
+// Convert milliseconds into an array of 9 segdigit_t's.
+// Note: we drop the thousandths digit because the Arduino's crystal isn't
+// accurate enough (e.g. about 1ms off ever 30 seconds).
+void millis_as_9_segdigits(millis_t elapsed, segdigit_t* digits_out) {
+    uint8_t millions = 0;
+    uint8_t hundredthousands = 0;
+    uint8_t tenthousands = 0;
+    uint8_t thousands = 0;
+    uint8_t hundreds = 0;
+    uint8_t tens = 0;
+    uint8_t ones = 0;
+    uint8_t tenths = 0;
+    uint8_t hundredths = 0;
+    // uint8_t thousandths = 0;
+
+    millis_t tmp = elapsed;
+    if (elapsed >= 1) {
+        // thousandths = tmp % 10;
+        if (elapsed >= 10) {
+            tmp = tmp / 10;
+            hundredths = tmp % 10;
+            if (elapsed >= 100) {
+                tmp = tmp / 10;
+                tenths = tmp % 10;
+                if (elapsed >= 1000) {
+                    tmp = tmp / 10;
+                    ones = tmp % 10;
+                    if (elapsed >= 10000) {
+                        tmp = tmp / 10;
+                        tens = tmp % 10;
+                        if (elapsed >= 100000) {
+                            tmp = tmp / 10;
+                            hundreds = tmp % 10;
+                            if (elapsed >= 1000000) {
+                                tmp = tmp / 10;
+                                thousands = tmp % 10;
+                                if (elapsed >= 10000000) {
+                                    tmp = tmp / 10;
+                                    tenthousands = tmp % 10;
+                                    if (elapsed >= 100000000) {
+                                        tmp = tmp / 10;
+                                        hundredthousands = tmp % 10;
+                                        if (elapsed >= 1000000000) {
+                                            tmp = tmp / 10;
+                                            millions = tmp % 10;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    digits_out[8] = g_numbers[millions];
+    digits_out[7] = g_numbers[hundredthousands];
+    digits_out[6] = g_numbers[tenthousands];
+    digits_out[5] = g_numbers[thousands];
+    digits_out[4] = g_numbers[hundreds];
+    digits_out[3] = g_numbers[tens];
+    digits_out[2] = dotted(g_numbers[ones]);
+    digits_out[1] = g_numbers[tenths];
+    digits_out[0] = g_numbers[hundredths];
+    // digits_out[0] = g_numbers[thousandths];
+}
+
+// Compare two arrays of segdigit_t's.
+bool display_states_are_equal(segdigit_t* a, segdigit_t* b) {
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
 }
 
-// Shift out the current display digits if they have changed.
-void update_display_if_needed() {
+// Shift out the current timer display digits if they have changed.
+void update_running_display_if_needed() {
     millis_t elapsed = get_elapsed_timer_millis();
-    digit_t proposed_display_state[3];
-    millis_as_display_state(elapsed, proposed_display_state);
+    segdigit_t proposed_display_state[3];
+    millis_as_3_segdigits(elapsed, proposed_display_state);
     if (!display_states_are_equal(g_display_state, proposed_display_state)) {
-        send_three_digits(proposed_display_state);
+        send_three_segdigits(proposed_display_state);
+    }
+}
+
+// Shift out the final time as a scrolling marquee (if an update is needed).
+void update_marquee_display_if_needed() {
+    #define MAX_SEGDIGITS 9 // uint32_t as seconds, dropping the thousandths digit.
+    millis_t final_millis = get_elapsed_timer_millis();
+    segdigit_t all_segdigits[MAX_SEGDIGITS];
+    millis_as_9_segdigits(final_millis, all_segdigits);
+
+    // Find the number of digits after dropping the leading zero's.
+    uint8_t num_digits = MAX_SEGDIGITS;
+    for (int8_t i = MAX_SEGDIGITS - 1; i >= 0; i--) {
+        if (all_segdigits[i] == NUMBER_0) {
+            num_digits -= 1;
+        } else {
+            break;
+        }
+    }
+    if (num_digits < 3) {
+        num_digits = 3; // At a minimum, display "0.00".
+    }
+
+    if (num_digits == 3) {
+        // If there are only three digits, no need to scroll the marquee.
+        update_running_display_if_needed();
+        return;
+    }
+
+    #define LEADING_BLANKS 2
+    #define TRAILING_BLANKS 3
+    #define TOTAL_SEGDIGITS (LEADING_BLANKS + MAX_SEGDIGITS + TRAILING_BLANKS)
+    segdigit_t segdigits_with_blanks[TOTAL_SEGDIGITS];
+    // Longest case:  "--9876543210---"
+    // Shortest case: "---------000---"
+    // Fill in the trailing blanks.
+    for (uint8_t i = 0; i < TRAILING_BLANKS; i++) {
+        segdigits_with_blanks[i] = BLANK;
+    }
+    // Copy the all the digits.
+    for (uint8_t i = TRAILING_BLANKS; i < (num_digits + TRAILING_BLANKS); i++) {
+        segdigits_with_blanks[i] = all_segdigits[i - TRAILING_BLANKS];
+    }
+    // Fill in the leading blanks.
+    for (uint8_t i = (num_digits + TRAILING_BLANKS); i < TOTAL_SEGDIGITS; i++) {
+        segdigits_with_blanks[i] = BLANK;
+    }
+
+    // Calculate which window of the digits to currently show in the scrolling marquee.
+    millis_t millis_since_stopped = g_millis_of_current_loop - g_millis_of_last_timer_stop;
+    uint8_t animation_frame_count = num_digits + 3;
+    uint16_t animation_period_ms = 400;
+    uint8_t animation_frame_index = (millis_since_stopped / animation_period_ms) % animation_frame_count;
+    uint8_t index_of_leftmost_visible_segdigit = (num_digits + TRAILING_BLANKS - 1) - animation_frame_index;
+
+    segdigit_t proposed_display_state[3];
+    proposed_display_state[0] = segdigits_with_blanks[index_of_leftmost_visible_segdigit];
+    proposed_display_state[1] = segdigits_with_blanks[index_of_leftmost_visible_segdigit+1];
+    proposed_display_state[2] = segdigits_with_blanks[index_of_leftmost_visible_segdigit+2];
+
+    if (!display_states_are_equal(g_display_state, proposed_display_state)) {
+        send_three_segdigits(proposed_display_state);
     }
 }
 
@@ -317,7 +454,7 @@ void update_display_if_needed() {
 // MARK: - Animations
 
 void snake_animation(millis_t delay_ms) {
-    digit_t frames[8] = {
+    segdigit_t frames[8] = {
         SEG_TO, SEG_UR, SEG_CE, SEG_LL,
         SEG_BO, SEG_LR, SEG_CE, SEG_UL
     };
@@ -330,7 +467,7 @@ void snake_animation(millis_t delay_ms) {
 }
 
 void circle_animation(millis_t delay_ms) {
-    digit_t frames[6] = { SEG_TO, SEG_UR, SEG_LR, SEG_BO, SEG_LL, SEG_UL };
+    segdigit_t frames[6] = { SEG_TO, SEG_UR, SEG_LR, SEG_BO, SEG_LL, SEG_UL };
     for (uint8_t i = 0; i < 6; i++) {
         digitalWrite(g_latch_pin, LOW);
         shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
@@ -340,7 +477,7 @@ void circle_animation(millis_t delay_ms) {
 }
 
 void numeric_animation(millis_t delay_ms) {
-    digit_t frames[10] = {
+    segdigit_t frames[10] = {
         NUMBER_0, NUMBER_1, NUMBER_2, NUMBER_3, NUMBER_4,
         NUMBER_5, NUMBER_6, NUMBER_7, NUMBER_8, NUMBER_9,
     };
@@ -353,14 +490,14 @@ void numeric_animation(millis_t delay_ms) {
 }
 
 void numeric_animation2(millis_t delay_ms) {
-    digit_t frames[10] = {
+    segdigit_t frames[10] = {
         NUMBER_0, NUMBER_1, NUMBER_2, NUMBER_3, NUMBER_4,
         NUMBER_5, NUMBER_6, NUMBER_7, NUMBER_8, NUMBER_9,
     };
     for (uint8_t i = 0; i < 10; i++) {
-        shift_out_digit(frames[i]);
-        shift_out_digit(frames[i]);
-        shift_out_digit(frames[i]);
+        shift_out_segdigit(frames[i]);
+        shift_out_segdigit(frames[i]);
+        shift_out_segdigit(frames[i]);
         delay(delay_ms);
     }
 }
@@ -403,11 +540,6 @@ void setup() {
         snake_animation(50);
     }
 
-    // Initialize display to "00.0"
-   shift_out_digit(g_numbers[0]);
-   shift_out_digit(dotted(g_numbers[0]));
-   shift_out_digit(g_numbers[0]);
-
     attachInterrupt(digitalPinToInterrupt(g_trigger_pin), gate_ISR, FALLING);
 }
 
@@ -444,7 +576,16 @@ void loop__gate_timer() {
     } else {
         g_millis_of_current_loop = millis();
         update_timer_state();
-        update_display_if_needed();
+        switch(g_timer_state) {
+            case TIMER_STATE_RUN_IN:
+            case TIMER_STATE_RUNNING:
+                update_running_display_if_needed();
+                break;
+            case TIMER_STATE_RUN_OUT:
+            case TIMER_STATE_STOPPED:
+                update_marquee_display_if_needed();
+                break;
+        }
     }
 }
 
@@ -452,5 +593,5 @@ void loop() {
     // Uncomment one of the following:
     // loop__animation(); return;
     // loop__interrupt_test(); return;
-     loop__gate_timer(); return;
+    loop__gate_timer(); return;
 }

@@ -7,5 +7,5 @@
 #include <stdint.h>
 
 typedef int pin_t;  // An Arduino pin number.
-typedef uint8_t digit_t;  // A 7-segment digit.
+typedef uint8_t segdigit_t;  // A number encoded for 7-segment display.
 typedef uint32_t millis_t;  // Milliseconds as returned by millis().
