@@ -260,8 +260,29 @@ millis_t get_elapsed_timer_millis() {
     }
 }
 
-// Convert milliseconds into an array of three segdigit_t's.
+#define DISPLAY_MODE_BASE10 0
+#define DISPLAY_MODE_BASE60 1
+uint8_t g_display_mode = DISPLAY_MODE_BASE60;
+
 void millis_as_3_segdigits(millis_t elapsed, segdigit_t* segdigits_out) {
+    if (g_display_mode == DISPLAY_MODE_BASE10) {
+        millis_as_3_segdigits_base10(elapsed, segdigits_out);
+    } else {
+        millis_as_3_segdigits_base60(elapsed, segdigits_out);
+    }
+}
+
+void millis_as_N_segdigits(millis_t elapsed, segdigit_t* segdigits_out) {
+    if (g_display_mode == DISPLAY_MODE_BASE10) {
+        millis_as_9_segdigits_base10(elapsed, segdigits_out);
+    } else {
+        millis_as_10_segdigits_base60(elapsed, segdigits_out);
+    }
+}
+
+// Convert milliseconds into an array of three segdigit_t's.
+// "Base 10" indicates that this returns seconds (no conversion to minutes, etc).
+void millis_as_3_segdigits_base10(millis_t elapsed, segdigit_t* segdigits_out) {
     uint8_t hundreds = 0;
     uint8_t tens = 0;
     uint8_t ones = 0;
@@ -306,9 +327,10 @@ void millis_as_3_segdigits(millis_t elapsed, segdigit_t* segdigits_out) {
 }
 
 // Convert milliseconds into an array of 9 segdigit_t's.
+// "Base 10" indicates that this returns seconds (no conversion to minutes, etc).
 // Note: we drop the thousandths digit because the Arduino's crystal isn't
 // accurate enough (e.g. about 1ms off ever 30 seconds).
-void millis_as_9_segdigits(millis_t elapsed, segdigit_t* digits_out) {
+void millis_as_9_segdigits_base10(millis_t elapsed, segdigit_t* segdigits_out) {
     uint8_t millions = 0;
     uint8_t hundredthousands = 0;
     uint8_t tenthousands = 0;
@@ -361,16 +383,139 @@ void millis_as_9_segdigits(millis_t elapsed, segdigit_t* digits_out) {
         }
     }
 
-    digits_out[8] = g_numbers[millions];
-    digits_out[7] = g_numbers[hundredthousands];
-    digits_out[6] = g_numbers[tenthousands];
-    digits_out[5] = g_numbers[thousands];
-    digits_out[4] = g_numbers[hundreds];
-    digits_out[3] = g_numbers[tens];
-    digits_out[2] = dotted(g_numbers[ones]);
-    digits_out[1] = g_numbers[tenths];
-    digits_out[0] = g_numbers[hundredths];
-    // digits_out[0] = g_numbers[thousandths];
+    segdigits_out[8] = g_numbers[millions];
+    segdigits_out[7] = g_numbers[hundredthousands];
+    segdigits_out[6] = g_numbers[tenthousands];
+    segdigits_out[5] = g_numbers[thousands];
+    segdigits_out[4] = g_numbers[hundreds];
+    segdigits_out[3] = g_numbers[tens];
+    segdigits_out[2] = dotted(g_numbers[ones]);
+    segdigits_out[1] = g_numbers[tenths];
+    segdigits_out[0] = g_numbers[hundredths];
+    // segdigits_out[0] = g_numbers[thousandths];
+}
+
+// Convert milliseconds into an array of three segdigit_t's.
+// "Base 60" indicates that this returns seconds, minutes, hours, etc.
+void millis_as_3_segdigits_base60(millis_t millis, segdigit_t* segdigits_out) {
+    uint8_t minutes1s = 0;
+    uint8_t seconds10s = 0;
+    uint8_t seconds1s = 0;
+    uint8_t tenths = 0;
+    uint8_t hundredths = 0;
+
+    millis_t tmp = millis;
+    uint32_t seconds;
+    uint32_t minutes;
+    if (millis >= 10) {
+        tmp = tmp / 10;
+        hundredths = tmp % 10;
+        if (millis >= 100) {
+            tmp = tmp / 10;
+            tenths = tmp % 10;
+            if (millis >= 1000) {
+                seconds = tmp / 10;
+                seconds1s = seconds % 10;
+                if (seconds >= 10) {
+                    tmp = seconds / 10;
+                    seconds10s = tmp % 6;
+                    if (seconds >= 60) {
+                        minutes = seconds / 60;
+                        minutes1s = minutes % 10;
+                    }
+                }
+            }
+        }
+    }
+
+    if (minutes1s > 0) {
+        segdigits_out[2] = dotted(g_numbers[minutes1s]);
+        segdigits_out[1] = g_numbers[seconds10s];
+        segdigits_out[0] = dotted(g_numbers[seconds1s]);
+    } else if (seconds10s > 0) {
+        segdigits_out[2] = g_numbers[seconds10s];
+        segdigits_out[1] = dotted(g_numbers[seconds1s]);
+        segdigits_out[0] = g_numbers[tenths];
+    } else {
+        segdigits_out[2] = dotted(g_numbers[seconds1s]);
+        segdigits_out[1] = g_numbers[tenths];
+        segdigits_out[0] = g_numbers[hundredths];
+    }
+}
+
+// Convert milliseconds into an array of 10 segdigit_t's.
+// "Base 60" indicates that this returns seconds, minutes, hours, etc.
+// Note: we drop the thousandths digit because the Arduino's crystal isn't
+// accurate enough (e.g. about 1ms off ever 30 seconds).
+void millis_as_10_segdigits_base60(millis_t millis, segdigit_t* segdigits_out) {
+    uint8_t days10s = 0;
+    uint8_t days1s = 0;
+    uint8_t hours10s = 0;
+    uint8_t hours1s = 0;
+    uint8_t minutes10s = 0;
+    uint8_t minutes1s = 0;
+    uint8_t seconds10s = 0;
+    uint8_t seconds1s = 0;
+    uint8_t tenths = 0;
+    uint8_t hundredths = 0;
+
+    millis_t tmp = millis;
+    uint32_t seconds;
+    uint32_t minutes;
+    uint32_t hours;
+    uint32_t days;
+    if (millis >= 10) {
+        tmp = tmp / 10;
+        hundredths = tmp % 10;
+        if (millis >= 100) {
+            tmp = tmp / 10;
+            tenths = tmp % 10;
+            if (millis >= 1000) {
+                seconds = tmp / 10;
+                seconds1s = seconds % 10;
+                if (seconds >= 10) {
+                    tmp = seconds / 10;
+                    seconds10s = tmp % 6;
+                    if (seconds >= 60) {
+                        minutes = seconds / 60;
+                        minutes1s = minutes % 10;
+                        if (minutes >= 10) {
+                            tmp = minutes / 10;
+                            minutes10s = tmp % 6;
+                            if (minutes >= 60) {
+                                hours = minutes / 60;
+                                hours1s = hours % 10;
+                                if (hours >= 10) {
+                                    tmp = hours / 10;
+                                    hours10s = tmp % 6;
+                                    if (hours >= 24) {
+                                        days = hours / 24;
+                                        days1s = days % 10;
+                                        if (days >= 10) {
+                                            tmp = days / 10;
+                                            days10s = tmp % 10;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    segdigits_out[9] = g_numbers[days10s];
+    segdigits_out[8] = dotted(g_numbers[days1s]);
+    segdigits_out[7] = g_numbers[hours10s];
+    segdigits_out[6] = dotted(g_numbers[hours1s]);
+    segdigits_out[5] = g_numbers[minutes10s];
+    segdigits_out[4] = dotted(g_numbers[minutes1s]);
+    segdigits_out[3] = g_numbers[seconds10s];
+    segdigits_out[2] = dotted(g_numbers[seconds1s]);
+    segdigits_out[1] = g_numbers[tenths];
+    segdigits_out[0] = g_numbers[hundredths];
+    // segdigits_out[0] = g_numbers[thousandths];
 }
 
 // Compare two arrays of segdigit_t's.
@@ -393,12 +538,12 @@ void update_marquee_display_if_needed() {
     #define MAX_SEGDIGITS 9 // uint32_t as seconds, dropping the thousandths digit.
     millis_t final_millis = get_elapsed_timer_millis();
     segdigit_t all_segdigits[MAX_SEGDIGITS];
-    millis_as_9_segdigits(final_millis, all_segdigits);
+    millis_as_N_segdigits(final_millis, all_segdigits);
 
     // Find the number of digits after dropping the leading zero's.
     uint8_t num_digits = MAX_SEGDIGITS;
     for (int8_t i = MAX_SEGDIGITS - 1; i >= 0; i--) {
-        if (all_segdigits[i] == NUMBER_0) {
+        if (undotted(all_segdigits[i]) == NUMBER_0) {
             num_digits -= 1;
         } else {
             break;
@@ -461,6 +606,8 @@ void snake_animation(millis_t delay_ms) {
     for (uint8_t i = 0; i < 8; i++) {
         digitalWrite(g_latch_pin, LOW);
         shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
+        shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
+        shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
         digitalWrite(g_latch_pin, HIGH);
         delay(delay_ms);
     }
@@ -470,6 +617,8 @@ void circle_animation(millis_t delay_ms) {
     segdigit_t frames[6] = { SEG_TO, SEG_UR, SEG_LR, SEG_BO, SEG_LL, SEG_UL };
     for (uint8_t i = 0; i < 6; i++) {
         digitalWrite(g_latch_pin, LOW);
+        shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
+        shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
         shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
         digitalWrite(g_latch_pin, HIGH);
         delay(delay_ms);
@@ -483,6 +632,8 @@ void numeric_animation(millis_t delay_ms) {
     };
     for (uint8_t i = 0; i < 10; i++) {
         digitalWrite(g_latch_pin, LOW);
+        shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
+        shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
         shiftOut(g_data_pin, g_clock_pin, MSBFIRST, frames[i]);
         digitalWrite(g_latch_pin, HIGH);
         delay(delay_ms);
@@ -537,7 +688,7 @@ void setup() {
 
     // boot-up animation
     for(uint8_t i = 0; i < 2; i++) {
-        snake_animation(50);
+        circle_animation(50);
     }
 
     attachInterrupt(digitalPinToInterrupt(g_trigger_pin), gate_ISR, FALLING);
